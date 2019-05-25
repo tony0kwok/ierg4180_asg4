@@ -62,6 +62,11 @@ long getContextSize(char *response_text){
 
     result = strstr(response, "Content-Length: ");
 
+    if (result==NULL)
+    {
+        return 0;
+    }
+
     result = strstr(result, " ");
 
     char *result2 = strstr(result, "\n");
@@ -163,7 +168,7 @@ typedef struct
     SSL_CTX *sslContext;
 } connection;
  
-#define PORT 443
+#define PORT 80
  
 // Establish a regular tcp connection
 int tcpConnect ()
@@ -210,30 +215,34 @@ connection *sslConnect (void)
     c->socket = tcpConnect ();
     if (c->socket)
     {
-        // Register the error strings for libcrypto & libssl
-        SSL_load_error_strings ();
+        if (strcmp(http_proto, "https")==0)
+        {
+        
+            // Register the error strings for libcrypto & libssl
+            SSL_load_error_strings ();
 
-        // Register the available ciphers and digests
-        SSL_library_init ();
-        OpenSSL_add_all_algorithms();
- 
-        // New context saying we are a client, and using SSL 2 or 3
-        c->sslContext = SSL_CTX_new (SSLv23_client_method ());
-        if (c->sslContext == NULL)
-            ERR_print_errors_fp (stderr);
- 
-        // Create an SSL struct for the connection
-        c->sslHandle = SSL_new (c->sslContext);
-        if (c->sslHandle == NULL)
-            ERR_print_errors_fp (stderr);
- 
-        // Connect the SSL struct to our connection
-        if (!SSL_set_fd (c->sslHandle, c->socket))
-            ERR_print_errors_fp (stderr);
- 
-        // Initiate SSL handshake
-        if (SSL_connect (c->sslHandle) != 1)
-            ERR_print_errors_fp (stderr);
+            // Register the available ciphers and digests
+            SSL_library_init ();
+            OpenSSL_add_all_algorithms();
+     
+            // New context saying we are a client, and using SSL 2 or 3
+            c->sslContext = SSL_CTX_new (SSLv23_client_method ());
+            if (c->sslContext == NULL)
+                ERR_print_errors_fp (stderr);
+     
+            // Create an SSL struct for the connection
+            c->sslHandle = SSL_new (c->sslContext);
+            if (c->sslHandle == NULL)
+                ERR_print_errors_fp (stderr);
+     
+            // Connect the SSL struct to our connection
+            if (!SSL_set_fd (c->sslHandle, c->socket))
+                ERR_print_errors_fp (stderr);
+     
+            // Initiate SSL handshake
+            if (SSL_connect (c->sslHandle) != 1)
+                ERR_print_errors_fp (stderr);
+        }
     }
     else
     {
@@ -262,14 +271,14 @@ void sslDisconnect (connection *c)
 // Read all available text from the connection
 char *sslRead (connection *c)
 {
-    long onetime_readSize = 1024, readSize = 1024;
+    long onetime_readSize = 1024, readSize = 100000;
     char *rc = NULL;
     long received = 0, onetime_received = 0;
     char *buffer;
  
     if (c)
     {
-        rc = malloc (readSize * sizeof (char) + 1);
+        rc = malloc (readSize * sizeof (char) + 1 + 1000);
         memset(rc,'\0',readSize + 1);
         buffer = malloc (onetime_readSize * sizeof (char) + 1);
         int skip = 0;
@@ -285,23 +294,34 @@ char *sslRead (connection *c)
             else
             if (strcmp(http_proto, "http")==0)
             {
-                /* code */
+                onetime_received = recv(c->socket, buffer, onetime_readSize, 0);
+                
             }
+            //printf("buffer = %s\n", buffer);
             if (loop==0)
             {
                 if((context_size = getContextSize(buffer))>0)
                 {
+                    printf("here1\n");
                     free(rc);
-                    rc = malloc (context_size * sizeof (char) + 1 + 500);
+                    rc = malloc (context_size * sizeof (char) + 1 + 1000);
                     memset(rc,'\0',context_size + 1);
                     readSize = context_size;
-                    char *temp = strstr(buffer, "\n\n");
-                    if (temp!=NULL)
-                    {
-                        strcpy(buffer, temp);
-                    }
-                    else
-                        strcpy(buffer, "");
+                }
+                else
+                {
+                    context_size = readSize;
+                }
+                char *temp = strstr(buffer, "\r\n\r\n");
+                //printf("buffer = %s\n", buffer);
+                //printf("temp = %s\n", temp);
+                if (temp!=NULL)
+                {
+                    strcpy(buffer, temp);
+                }
+                else
+                {
+                    strcpy(buffer, "");
                 }
             }
             if (onetime_received<=-1)
@@ -344,7 +364,7 @@ char *sslRead (connection *c)
     rc[readSize+1] = '\0';
     printf("received = %ld\n", received);
     printf("readSize = %ld\n", readSize);
-    printf("rc = %s\n", rc);
+    //printf("rc = %s\n", rc);
     return rc;
 }
  
@@ -352,7 +372,17 @@ char *sslRead (connection *c)
 void sslWrite (connection *c, char *text)
 {
     if (c)
-        SSL_write (c->sslHandle, text, strlen (text));
+    {
+        if (strcmp(http_proto, "https")==0)
+        {
+            SSL_write (c->sslHandle, text, strlen (text));
+        }
+        else
+        {
+            send(c->socket, text, strlen (text), 0);
+        }
+        
+    }
 }
  
 // Very basic main: we send GET / and print the response.
