@@ -9,7 +9,6 @@
 #include <errno.h>
 #include <getopt.h>
  
-#include <openssl/rand.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
@@ -91,6 +90,17 @@ void analysisURL(char *url_link){
     {
         strcpy(port, http_port);
     }
+    else
+    {
+        if (strcmp(http_proto, "http")==0)
+        {
+            strcpy(port, "80");
+        }
+        else
+        {
+            strcpy(port, "443");
+        }
+    }
 
     strcpy(url, url_link);
 
@@ -129,6 +139,7 @@ int setting(int argc, char** argv){
     analysisURL(argv[1]); 
     //printf("http_host = %s\n", hostname);
     //printf("http_proto = %s\n", http_proto);
+    //printf("%d\n", strcmp(http_proto, "https"));
     //printf("http_resource = %s\n", http_resource);
     //printf("port = %s\n", port);
 
@@ -168,8 +179,6 @@ typedef struct
     SSL_CTX *sslContext;
 } connection;
  
-#define PORT 80
- 
 // Establish a regular tcp connection
 int tcpConnect ()
 {
@@ -187,7 +196,7 @@ int tcpConnect ()
     else
     {
         server.sin_family = AF_INET;
-        server.sin_port = htons (PORT);
+        server.sin_port = htons (atoi(port));
         server.sin_addr = *((struct in_addr *) host->h_addr);
         bzero (&(server.sin_zero), 8);
  
@@ -217,7 +226,7 @@ connection *sslConnect (void)
     {
         if (strcmp(http_proto, "https")==0)
         {
-        
+            
             // Register the error strings for libcrypto & libssl
             SSL_load_error_strings ();
 
@@ -302,7 +311,6 @@ char *sslRead (connection *c)
             {
                 if((context_size = getContextSize(buffer))>0)
                 {
-                    printf("here1\n");
                     free(rc);
                     rc = malloc (context_size * sizeof (char) + 1 + 1000);
                     memset(rc,'\0',context_size + 1);
@@ -362,8 +370,8 @@ char *sslRead (connection *c)
     }
 
     rc[readSize+1] = '\0';
-    printf("received = %ld\n", received);
-    printf("readSize = %ld\n", readSize);
+    //printf("received = %ld bytes\n", received);
+    //printf("readSize = %ld\n", readSize);
     //printf("rc = %s\n", rc);
     return rc;
 }
@@ -391,21 +399,6 @@ int main (int argc, char **argv)
     connection *c;
     char *response;
 
-    /*//get ipv6 address
-    int gaiStatus; // getaddrinfo 狀態碼
-    struct addrinfo hints; // hints 參數，設定 getaddrinfo() 的回傳方式
-    struct addrinfo *result, *udp_result; // getaddrinfo() 執行結果的 addrinfo 結構指標
-
-    // 以 memset 清空 hints 結構
-    memset(&hints, 0, sizeof(struct addrinfo));
-    hints.ai_family = inet_type; // 使用 IPv4 or IPv6
-    hints.ai_socktype = SOCK_STREAM; // 串流 Socket
-    hints.ai_flags = AI_NUMERICSERV; // 將 getaddrinfo() 第 2 參數 (PORT_NUM) 視為數字
-
-    // 以 getaddrinfo 透過 DNS，取得 addrinfo 鏈結串列 (Linked List)
-    // 以從中取得 Host 的 IP 位址
-    if ((gaiStatus = getaddrinfo(strcmp(hostname, "localhost")==0?NULL:hostname, port_num, &hints, &result)) != 0)
-        errExit((char *) gai_strerror(gaiStatus));*/
     setting(argc, argv);
     c = sslConnect();
     
